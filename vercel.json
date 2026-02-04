@@ -9,8 +9,5 @@
       }
     }
   ],
-  "scripts": {
-    "build": "npm run build"
-  },
   "outputDirectory": "dist"
 }
