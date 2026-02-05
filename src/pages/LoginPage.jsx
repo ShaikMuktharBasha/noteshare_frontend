@@ -26,7 +26,7 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="mx-auto grid max-w-5xl gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+    <div className="mx-auto grid min-h-[80vh] max-w-5xl gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
