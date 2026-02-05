@@ -1,14 +1,23 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FolderLock, Upload, FileText, Trash2, Download, X, Search, Filter } from 'lucide-react';
+import { FolderLock, Upload, FileText, Trash2, Download, X, Search, Filter, Lock, Key, Shield, RefreshCcw } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.jsx';
 import api from '../utils/api.js';
 import { getFileUrl } from '../utils/fileUrl.js';
 
 const categories = ['All', 'Resume', 'ID Proof', 'Certificate', 'Financial', 'Medical', 'Other'];
 
 const PersonalDocsPage = () => {
+  const { user, updateUser } = useAuth();
   const [docs, setDocs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // Changed from true to false, will load after unlock
+  const [isLocked, setIsLocked] = useState(true);
+  const [securityMode, setSecurityMode] = useState('loading'); // loading | unlock | setup | reset
+  const [securityInput, setSecurityInput] = useState('');
+  const [resetInput, setResetInput] = useState({ accountPassword: '', newDocsPassword: '' });
+  const [securityError, setSecurityError] = useState('');
+  const [securityLoading, setSecurityLoading] = useState(false);
+  
   const [uploading, setUploading] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const [search, setSearch] = useState('');
@@ -17,8 +26,48 @@ const PersonalDocsPage = () => {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchDocs();
-  }, []);
+    if (user) {
+      setSecurityMode(user.hasDocsPassword ? 'unlock' : 'setup');
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!isLocked) {
+      setLoading(true);
+      fetchDocs();
+    }
+  }, [isLocked]);
+
+  const handleSecuritySubmit = async (e) => {
+    e.preventDefault();
+    setSecurityError('');
+    setSecurityLoading(true);
+
+    try {
+      if (securityMode === 'unlock') {
+        await api.post('/auth/docs-password/verify', { password: securityInput });
+        setIsLocked(false);
+        setSecurityInput('');
+      } else if (securityMode === 'setup') {
+        if (securityInput.length < 4) throw new Error('Password must be at least 4 characters');
+        await api.post('/auth/docs-password/set', { password: securityInput });
+        updateUser({ hasDocsPassword: true });
+        setIsLocked(false);
+        setSecurityInput('');
+      } else if (securityMode === 'reset') {
+        if (resetInput.newDocsPassword.length < 4) throw new Error('New password must be at least 4 characters');
+        await api.post('/auth/docs-password/reset', resetInput);
+        updateUser({ hasDocsPassword: true });
+        setIsLocked(false);
+        setResetInput({ accountPassword: '', newDocsPassword: '' });
+        setSecurityMode('unlock'); // Reset to default state
+      }
+    } catch (err) {
+      setSecurityError(err.response?.data?.message || err.message || 'Operation failed');
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
 
   const fetchDocs = async () => {
     try {
@@ -87,6 +136,122 @@ const PersonalDocsPage = () => {
     };
     return colors[cat] || colors.Other;
   };
+
+  if (isLocked) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-xl"
+        >
+          <div className="bg-gradient-to-r from-violet-600/20 to-purple-600/20 p-6 text-center border-b border-white/5">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20 shadow-lg">
+              {securityMode === 'setup' ? <Key className="h-8 w-8 text-emerald-400" /> : 
+               securityMode === 'reset' ? <RefreshCcw className="h-8 w-8 text-amber-400" /> :
+               <Lock className="h-8 w-8 text-violet-400" />}
+            </div>
+            <h2 className="text-xl font-bold text-white">
+              {securityMode === 'setup' ? 'Set Personal Password' : 
+               securityMode === 'reset' ? 'Reset Docs Password' : 
+               'Protected Storage'}
+            </h2>
+            <p className="mt-2 text-sm text-slate-300">
+              {securityMode === 'setup' ? 'Create a secure password for your personal documents.' : 
+               securityMode === 'reset' ? 'Enter your account password to set a new docs password.' :
+               'Please enter your password to access your documents.'}
+            </p>
+          </div>
+
+          <div className="p-6">
+            {securityError && (
+              <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-200 ring-1 ring-red-500/20">
+                {securityError}
+              </div>
+            )}
+
+            <form onSubmit={handleSecuritySubmit} className="space-y-4">
+              {securityMode === 'reset' ? (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Account Password</label>
+                    <input
+                      type="password"
+                      value={resetInput.accountPassword}
+                      onChange={(e) => setResetInput({...resetInput, accountPassword: e.target.value})}
+                      className="w-full rounded-lg border border-white/10 bg-black/20 px-4 py-3 text-white placeholder-slate-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition"
+                      placeholder="Your main login password"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">New Docs Password</label>
+                    <input
+                      type="password"
+                      value={resetInput.newDocsPassword}
+                      onChange={(e) => setResetInput({...resetInput, newDocsPassword: e.target.value})}
+                      className="w-full rounded-lg border border-white/10 bg-black/20 px-4 py-3 text-white placeholder-slate-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition"
+                      placeholder="New secure docs password"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <input
+                    type="password"
+                    value={securityInput}
+                    onChange={(e) => setSecurityInput(e.target.value)}
+                    className="w-full rounded-lg border border-white/10 bg-black/20 px-4 py-3 text-center text-lg tracking-widest text-white placeholder-slate-600 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition"
+                    placeholder={securityMode === 'setup' ? "Create Password" : "Enter Password"}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={securityLoading}
+                className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 py-3 font-semibold text-white shadow-lg shadow-violet-500/25 transition hover:shadow-violet-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {securityLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Processing...
+                  </span>
+                ) : (
+                  securityMode === 'setup' ? 'Set Password' : 
+                  securityMode === 'reset' ? 'Reset Password' :
+                  'Unlock Documents'
+                )}
+              </button>
+            </form>
+
+            {securityMode === 'unlock' && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setSecurityMode('reset')}
+                  className="text-sm text-slate-400 hover:text-white transition-colors underline decoration-slate-600 underline-offset-4 hover:decoration-white"
+                >
+                  Forgot Docs Password?
+                </button>
+              </div>
+            )}
+            
+            {securityMode === 'reset' && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setSecurityMode('unlock')}
+                  className="text-sm text-slate-400 hover:text-white transition-colors"
+                >
+                  Back to Unlock
+                </button>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
